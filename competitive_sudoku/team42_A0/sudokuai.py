@@ -3,8 +3,8 @@
 #  https://www.gnu.org/licenses/gpl-3.0.txt)
 
 """
-Competitive Sudoku AI using Alpha-Beta pruning with enclosing strategy.
-Team 42 - Assignment A0
+Competitive Sudoku AI using Alpha-Beta pruning.
+Team 42 - Assignment A1
 """
 
 import random
@@ -20,16 +20,16 @@ class SudokuAI(competitive_sudoku.sudokuai.SudokuAI):
     Competitive Sudoku AI that uses Alpha-Beta pruning for move selection.
 
     Strategy:
-    - Uses minimax search with Alpha-Beta pruning (depth 4)
-    - Evaluation focuses on score difference and restricting opponent mobility
-    - Employs an "enclosing strategy" to limit opponent's options
+    - Uses minimax search with Alpha-Beta pruning at fixed depth
+    - Simple evaluation based on score difference
     """
 
     def __init__(self):
         super().__init__()
         self.evaluator = BoardEvaluator()
         self.search = AlphaBetaSearch(self.evaluator, self.get_all_allowed_moves)
-        self.search_depth = 3
+        # Fixed search depth
+        self.search_depth = 8
 
     def get_all_allowed_moves(self, game_state: GameState) -> list[Move]:
         """
@@ -112,7 +112,7 @@ class SudokuAI(competitive_sudoku.sudokuai.SudokuAI):
 
     def compute_best_move(self, game_state: GameState) -> None:
         """
-        Computes and proposes the best move using Alpha-Beta search.
+        Computes and proposes the best move using Alpha-Beta search at fixed depth.
 
         Uses an anytime algorithm approach:
         1. Immediately proposes a random valid move (safety)
@@ -122,6 +122,7 @@ class SudokuAI(competitive_sudoku.sudokuai.SudokuAI):
 
         @param game_state: The current game state
         """
+        # Generate all moves
         all_moves = self.get_all_allowed_moves(game_state)
 
         if not all_moves:
@@ -131,7 +132,7 @@ class SudokuAI(competitive_sudoku.sudokuai.SudokuAI):
         best_move = random.choice(all_moves)
         self.propose_move(best_move)
 
-        # Search for better moves using Alpha-Beta
+        # Search for better moves using Alpha-Beta at fixed depth
         best_evaluation = float('-inf')
         original_player = game_state.current_player
 

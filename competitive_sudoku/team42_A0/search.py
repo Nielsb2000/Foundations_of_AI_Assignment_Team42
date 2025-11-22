@@ -44,7 +44,8 @@ class AlphaBetaSearch:
         alpha: float,
         beta: float,
         maximizing_player: bool,
-        original_player: int
+        original_player: int,
+        current_moves=None
     ) -> float:
         """
         Alpha-Beta pruning algorithm for minimax search.
@@ -55,29 +56,25 @@ class AlphaBetaSearch:
         @param beta: Best value for minimizing player
         @param maximizing_player: True if current player is maximizing
         @param original_player: The player we're evaluating for (stays constant)
+        @param current_moves: Pre-computed moves for current state (optional, for optimization)
         @return: Best evaluation score FROM ORIGINAL PLAYER'S PERSPECTIVE
         """
+        # Generate moves once if not provided
+        if current_moves is None:
+            current_moves = self.move_generator(game_state)
+
         # Base case: reached depth limit or game over
-        if depth == 0:
-            # Evaluate from original player's perspective
-            eval_score = self.evaluator.evaluate_state(game_state, self.move_generator)
+        if depth == 0 or not current_moves:
+            # Evaluate from original player's perspective, pass moves to avoid recomputation
+            eval_score = self.evaluator.evaluate_state(game_state, self.move_generator, current_moves)
             # If the current player is not the original player, negate the score
-            if game_state.current_player != original_player:
-                eval_score = -eval_score
-            return eval_score
-
-        all_moves = self.move_generator(game_state)
-
-        # If no moves available, evaluate current state
-        if not all_moves:
-            eval_score = self.evaluator.evaluate_state(game_state, self.move_generator)
             if game_state.current_player != original_player:
                 eval_score = -eval_score
             return eval_score
 
         if maximizing_player:
             max_eval = float('-inf')
-            for move in all_moves:
+            for move in current_moves:
                 new_state = self.simulate_move(game_state, move)
                 eval_score = self.alpha_beta(new_state, depth - 1, alpha, beta, False, original_player)
                 max_eval = max(max_eval, eval_score)
@@ -87,7 +84,7 @@ class AlphaBetaSearch:
             return max_eval
         else:
             min_eval = float('inf')
-            for move in all_moves:
+            for move in current_moves:
                 new_state = self.simulate_move(game_state, move)
                 eval_score = self.alpha_beta(new_state, depth - 1, alpha, beta, True, original_player)
                 min_eval = min(min_eval, eval_score)
@@ -115,6 +112,7 @@ class AlphaBetaSearch:
 
         for move in all_moves:
             new_state = self.simulate_move(game_state, move)
+            # Don't pass moves here - let alpha_beta compute them for the new state
             evaluation = self.alpha_beta(
                 new_state, depth - 1, float('-inf'), float('inf'), False, original_player
             )
