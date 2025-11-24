@@ -8,6 +8,7 @@ Simple evaluation based on score difference.
 """
 
 from competitive_sudoku.sudoku import GameState
+from typing import Optional, List, Tuple
 
 
 class BoardEvaluator:
@@ -25,10 +26,22 @@ class BoardEvaluator:
         @param opponent_moves_list: Pre-computed opponent moves (unused but kept for compatibility)
         @return: Evaluation score (current_player_score - opponent_score)
         """
+        #Score Setup
         current_player = game_state.current_player
         opponent = 3 - current_player
-
         current_score = game_state.scores[current_player - 1]
         opponent_score = game_state.scores[opponent - 1]
 
-        return current_score - opponent_score
+        # current_allowed_moves = len(current_moves)
+
+        mobility_diff = len(current_moves)
+
+        # current_allowed_moves = len(clean_allowed1)
+        # opponent_allowed_moves = len(clean_allowed2)
+        # # Compute scores and mobility
+
+        score_diff = current_score - opponent_score
+        # mobility_diff = current_allowed_moves - opponent_allowed_moves
+
+
+        return score_diff * 2 + mobility_diff 
