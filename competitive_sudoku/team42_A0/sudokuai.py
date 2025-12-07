@@ -8,6 +8,10 @@ Team 42 - Assignment A1
 """
 
 import random
+import os
+import pickle
+import time
+import sys
 from competitive_sudoku.sudoku import GameState, Move, SudokuBoard, TabooMove
 import competitive_sudoku.sudokuai
 
@@ -27,9 +31,58 @@ class SudokuAI(competitive_sudoku.sudokuai.SudokuAI):
     def __init__(self):
         super().__init__()
         self.evaluator = BoardEvaluator()
-        self.search = AlphaBetaSearch(self.evaluator, self.get_all_allowed_moves)
         # Fixed search depth
+        self.search = AlphaBetaSearch(self.evaluator, self.get_all_allowed_moves, use_tt=True)
         self.search_depth = 8
+        # Try to load a persisted transposition table (if available)
+        try:
+            tt_data = self.load()
+            if isinstance(tt_data, dict):
+                self.search.tt = tt_data
+                print(f"[INFO] Loaded TT with {len(self.search.tt)} entries from previous run")
+        except Exception:
+            # ignore load errors — continue with empty TT
+            pass        
+
+    # --- Package-local TT persistence helpers (store inside team42_A0 folder) ---
+    def _tt_filepath(self) -> str:
+        """Return a stable file path inside this package for the player's TT."""
+        folder = os.path.dirname(__file__)
+        # store all TT files in a dedicated subfolder to avoid cwd cleanup
+        tt_folder = os.path.join(folder, 'tt_files')
+        # Use player_number if available, otherwise use -1
+        num = getattr(self, 'player_number', -1)
+        return os.path.join(tt_folder, f'tt_player_{num}.pkl')
+
+    def save(self, obj):
+        """Save object (TT dict) into package folder to survive simulate_game cleanup."""
+        try:
+            path = self._tt_filepath()
+            # ensure directory exists
+            os.makedirs(os.path.dirname(path), exist_ok=True)
+            start = time.time()
+            with open(path, 'wb') as handle:
+                pickle.dump(obj, handle)
+            dur = time.time() - start
+            print(f"Saved TT to {path} in {dur:.3f}s")
+        except Exception as e:
+            print(f"[WARN] Failed to save TT to package folder: {e}")
+
+    def load(self):
+        """Load a previously saved TT from the package folder (if present)."""
+        try:
+            path = self._tt_filepath()
+            if not os.path.isfile(path):
+                return None
+            start = time.time()
+            with open(path, 'rb') as handle:
+                obj = pickle.load(handle)
+            dur = time.time() - start
+            print(f"Loaded TT from {path} in {dur:.3f}s")
+            return obj
+        except Exception as e:
+            print(f"[WARN] Failed to load TT from package folder: {e}")
+            return None
 
     def get_all_allowed_moves(self, game_state: GameState) -> list[Move]:
         """
@@ -132,6 +185,16 @@ class SudokuAI(competitive_sudoku.sudokuai.SudokuAI):
         best_move = random.choice(all_moves)
         self.propose_move(best_move)
 
+        # Ensure we have a warm transposition table (lazy load now that player_number is set)
+        try:
+            if getattr(self.search, 'tt', None) is not None and len(self.search.tt) == 0:
+                tt_data = self.load()
+                if isinstance(tt_data, dict):
+                    self.search.tt = tt_data
+                    print(f"[INFO] Loaded TT with {len(self.search.tt)} entries from package file (lazy)")
+        except Exception as e:
+            print(f"[WARN] TT lazy-load failed: {e}")
+
         # Search for better moves using Alpha-Beta at fixed depth
         best_evaluation = float('-inf')
         original_player = game_state.current_player
@@ -152,6 +215,16 @@ class SudokuAI(competitive_sudoku.sudokuai.SudokuAI):
                 best_move = move
                 self.propose_move(best_move)
 
+        # Save transposition table for reuse in future runs
+        try:
+            self.save(self.search.tt)
+            # Print TT statistics
+            self.search.print_tt_stats()
+            sys.stdout.flush()
+        except Exception as e:
+            print(f"Failed to save TT: {e}")
+
         # Continue proposing the best move found
         while True:
             self.propose_move(best_move)
+
