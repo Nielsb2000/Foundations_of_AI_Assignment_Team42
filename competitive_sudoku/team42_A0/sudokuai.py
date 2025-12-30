@@ -31,18 +31,9 @@ class SudokuAI(competitive_sudoku.sudokuai.SudokuAI):
     def __init__(self):
         super().__init__()
         self.evaluator = BoardEvaluator()
-        # Fixed search depth
+        # Use iterative deepening search
         self.search = AlphaBetaSearch(self.evaluator, self.get_all_allowed_moves, use_tt=True)
-        self.search_depth = 8
-        # Try to load a persisted transposition table (if available)
-        try:
-            tt_data = self.load()
-            if isinstance(tt_data, dict):
-                self.search.tt = tt_data
-                print(f"[INFO] Loaded TT with {len(self.search.tt)} entries from previous run")
-        except Exception:
-            # ignore load errors — continue with empty TT
-            pass        
+        # Transposition table starts fresh each game (no persistence between games)        
 
     # --- Package-local TT persistence helpers (store inside team42_A0 folder) ---
     def _tt_filepath(self) -> str:
@@ -165,13 +156,13 @@ class SudokuAI(competitive_sudoku.sudokuai.SudokuAI):
 
     def compute_best_move(self, game_state: GameState) -> None:
         """
-        Computes and proposes the best move using Alpha-Beta search at fixed depth.
+        Computes and proposes the best move using iterative deepening with Alpha-Beta search.
 
-        Uses an anytime algorithm approach:
+        Uses an anytime algorithm approach with iterative deepening:
         1. Immediately proposes a random valid move (safety)
-        2. Searches for better moves using Alpha-Beta pruning
+        2. Searches at increasing depths (1, 2, 3, ...)
         3. Proposes improved moves as they are found
-        4. Continues proposing the best move until time runs out
+        4. Continues until time runs out, always having a valid move
 
         @param game_state: The current game state
         """
@@ -185,46 +176,39 @@ class SudokuAI(competitive_sudoku.sudokuai.SudokuAI):
         best_move = random.choice(all_moves)
         self.propose_move(best_move)
 
-        # Ensure we have a warm transposition table (lazy load now that player_number is set)
-        try:
-            if getattr(self.search, 'tt', None) is not None and len(self.search.tt) == 0:
-                tt_data = self.load()
-                if isinstance(tt_data, dict):
-                    self.search.tt = tt_data
-                    print(f"[INFO] Loaded TT with {len(self.search.tt)} entries from package file (lazy)")
-        except Exception as e:
-            print(f"[WARN] TT lazy-load failed: {e}")
-
-        # Search for better moves using Alpha-Beta at fixed depth
-        best_evaluation = float('-inf')
+        # Iterative deepening: search at increasing depths
         original_player = game_state.current_player
+        depth = 1
 
-        for move in all_moves:
-            new_state = self.search.simulate_move(game_state, move)
-            evaluation = self.search.alpha_beta(
-                new_state,
-                self.search_depth - 1,
-                float('-inf'),
-                float('inf'),
-                False,
-                original_player
-            )
-
-            if evaluation > best_evaluation:
-                best_evaluation = evaluation
-                best_move = move
-                self.propose_move(best_move)
-
-        # Save transposition table for reuse in future runs
-        try:
-            self.save(self.search.tt)
-            # Print TT statistics
-            self.search.print_tt_stats()
-            sys.stdout.flush()
-        except Exception as e:
-            print(f"Failed to save TT: {e}")
-
-        # Continue proposing the best move found
         while True:
-            self.propose_move(best_move)
+            best_evaluation = float('-inf')
+            depth_best_move = None
+
+            # Search all moves at current depth
+            for move in all_moves:
+                previous_player = game_state.current_player
+                self.search.make_move(game_state, move)
+                evaluation = self.search.alpha_beta(
+                    game_state,
+                    depth - 1,
+                    float('-inf'),
+                    float('inf'),
+                    False,
+                    original_player
+                )
+                self.search.unmake_move(game_state, move, previous_player)
+
+                if evaluation > best_evaluation:
+                    best_evaluation = evaluation
+                    depth_best_move = move
+
+            # If we found a move at this depth, propose it
+            if depth_best_move is not None:
+                best_move = depth_best_move
+                self.propose_move(best_move)
+                print(f"[Depth {depth}] Best move: {best_move.square} = {best_move.value}, eval: {best_evaluation:.2f}")
+                sys.stdout.flush()
+
+            # Increment depth for next iteration
+            depth += 1
 

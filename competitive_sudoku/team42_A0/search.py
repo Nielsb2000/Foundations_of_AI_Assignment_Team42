@@ -7,7 +7,6 @@ Search algorithms for Competitive Sudoku AI.
 Contains Alpha-Beta pruning and other search strategies.
 """
 
-import copy
 from competitive_sudoku.sudoku import GameState, Move, SudokuBoard
 from team42_A0.zobrist_transposition_table import Zobrist
 
@@ -29,20 +28,29 @@ class AlphaBetaSearch:
         self.tt_probes = 0
         self.tt_hits = 0
         self.tt_stores = 0
-    @staticmethod
-    def simulate_move(game_state: GameState, move: Move) -> GameState:
-        """
-        Simulates a move and returns the resulting game state.
-        Does not modify the original game state.
 
-        @param game_state: The current game state
-        @param move: The move to simulate
-        @return: New game state after the move
+    @staticmethod
+    def make_move(game_state: GameState, move: Move) -> None:
         """
-        new_state = copy.deepcopy(game_state)
-        new_state.board.put(move.square, move.value)
-        new_state.current_player = 3 - game_state.current_player
-        return new_state
+        Applies a move to the game state (modifies in place).
+
+        @param game_state: The game state to modify
+        @param move: The move to apply
+        """
+        game_state.board.put(move.square, move.value)
+        game_state.current_player = 3 - game_state.current_player
+
+    @staticmethod
+    def unmake_move(game_state: GameState, move: Move, previous_player: int) -> None:
+        """
+        Undoes a move on the game state (modifies in place).
+
+        @param game_state: The game state to modify
+        @param move: The move to undo
+        @param previous_player: The player who made the move
+        """
+        game_state.board.put(move.square, SudokuBoard.empty)
+        game_state.current_player = previous_player
 
     def _ensure_zobrist(self, board: SudokuBoard):
         if self.zobrist is None:
@@ -122,11 +130,10 @@ class AlphaBetaSearch:
 
         # Base case: reached depth limit or game over
         if depth == 0 or not current_moves:
-            # Evaluate from original player's perspective, pass moves to avoid recomputation
-            eval_score = self.evaluator.evaluate_state(game_state, self.move_generator, current_moves)
-            # If the current player is not the original player, negate the score
-            if game_state.current_player != original_player:
-                eval_score = -eval_score
+            # Evaluate from original player's perspective
+            eval_score = self.evaluator.evaluate_state(
+                game_state, original_player, current_moves, self.move_generator
+            )
             # Store in TT
             if self.use_tt and key is not None:
                 self.tt[key] = (depth, eval_score)
@@ -136,8 +143,11 @@ class AlphaBetaSearch:
         if maximizing_player:
             max_eval = float('-inf')
             for move in current_moves:
-                new_state = self.simulate_move(game_state, move)
-                eval_score = self.alpha_beta(new_state, depth - 1, alpha, beta, False, original_player)
+                previous_player = game_state.current_player
+                self.make_move(game_state, move)
+                eval_score = self.alpha_beta(game_state, depth - 1, alpha, beta, False, original_player)
+                self.unmake_move(game_state, move, previous_player)
+
                 max_eval = max(max_eval, eval_score)
                 alpha = max(alpha, eval_score)
                 if beta <= alpha:
@@ -150,8 +160,11 @@ class AlphaBetaSearch:
         else:
             min_eval = float('inf')
             for move in current_moves:
-                new_state = self.simulate_move(game_state, move)
-                eval_score = self.alpha_beta(new_state, depth - 1, alpha, beta, True, original_player)
+                previous_player = game_state.current_player
+                self.make_move(game_state, move)
+                eval_score = self.alpha_beta(game_state, depth - 1, alpha, beta, True, original_player)
+                self.unmake_move(game_state, move, previous_player)
+
                 min_eval = min(min_eval, eval_score)
                 beta = min(beta, eval_score)
                 if beta <= alpha:
@@ -180,11 +193,12 @@ class AlphaBetaSearch:
         original_player = game_state.current_player
 
         for move in all_moves:
-            new_state = self.simulate_move(game_state, move)
-            # Don't pass moves here - let alpha_beta compute them for the new state
+            previous_player = game_state.current_player
+            self.make_move(game_state, move)
             evaluation = self.alpha_beta(
-                new_state, depth - 1, float('-inf'), float('inf'), False, original_player
+                game_state, depth - 1, float('-inf'), float('inf'), False, original_player
             )
+            self.unmake_move(game_state, move, previous_player)
 
             if evaluation > best_evaluation:
                 best_evaluation = evaluation
